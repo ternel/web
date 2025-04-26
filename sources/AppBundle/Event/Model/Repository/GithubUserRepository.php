@@ -19,10 +19,7 @@ use Symfony\Component\Security\Core\User\UserProviderInterface;
 
 class GithubUserRepository extends Repository implements MetadataInitializer, UserProviderInterface
 {
-    /**
-     * @inheritDoc
-     */
-    public static function initMetadata(SerializerFactoryInterface $serializerFactory, array $options = [])
+    public static function initMetadata(SerializerFactoryInterface $serializerFactory, array $options = []): Metadata
     {
         $metadata = new Metadata($serializerFactory);
 
@@ -35,7 +32,7 @@ class GithubUserRepository extends Repository implements MetadataInitializer, Us
             ->addField([
                 'columnName' => 'id',
                 'fieldName' => 'id',
-                'primary'       => true,
+                'primary' => true,
                 'autoincrement' => true,
                 'type' => 'int'
             ])
@@ -74,8 +71,7 @@ class GithubUserRepository extends Repository implements MetadataInitializer, Us
                 'fieldName' => 'afupCrew',
                 'type' => 'bool',
                 'serializer' => Boolean::class
-            ])
-        ;
+            ]);
 
         return $metadata;
     }
@@ -93,10 +89,12 @@ class GithubUserRepository extends Repository implements MetadataInitializer, Us
         return $query->query($this->getCollection(new HydratorSingleObject()));
     }
 
-    /**
-     * @inheritDoc
-     */
-    public function loadUserByUsername(string $username)
+    public function loadUserByIdentifier(string $identifier): GithubUser
+    {
+        return $this->loadUserByUsername($identifier);
+    }
+
+    public function loadUserByUsername(string $username): GithubUser
     {
         $user = $this->getOneBy(['login' => $username]);
         if ($user === null) {
@@ -105,26 +103,20 @@ class GithubUserRepository extends Repository implements MetadataInitializer, Us
         return $user;
     }
 
-    /**
-     * @inheritDoc
-     */
-    public function refreshUser(UserInterface $user)
+    public function refreshUser(UserInterface $user): UserInterface
     {
         if (($user instanceof GithubUser) === false) {
             throw new UnsupportedUserException();
         }
-        /**
-         * @var GithubUser $user
-         */
-        $newUser = $this->getOneBy(['id' => $user->getId()]);
-        return $newUser;
+        $refreshUser = $this->getOneBy(['id' => $user->getId()]);
+        if ($refreshUser === null) {
+            throw new UserNotFoundException();
+        }
+        return $refreshUser;
     }
 
-    /**
-     * @inheritDoc
-     */
-    public function supportsClass(string $class)
+    public function supportsClass(string $class): bool
     {
-        return ($class === GithubUser::class);
+        return $class === GithubUser::class;
     }
 }

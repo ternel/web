@@ -629,7 +629,7 @@ class CompanyMember implements NotifyPropertyInterface
     public function setLastSubscription(?string $sub): void
     {
         if ($sub !== null) {
-            $this->lastSubscription = \DateTimeImmutable::createFromFormat('U', $sub);
+            $this->lastSubscription = new \DateTimeImmutable('@' . $sub);
         }
     }
 
@@ -673,5 +673,12 @@ class CompanyMember implements NotifyPropertyInterface
     {
         $this->propertyChanged('cellphone', $this->cellphone, $cellphone);
         $this->cellphone = $cellphone;
+    }
+
+    public function getMembershipFee(int $default = AFUP_PERSONNE_MORALE_SEUIL): float
+    {
+        $max = max($this->getMaxMembers(), $default);
+
+        return ceil($max / AFUP_PERSONNE_MORALE_SEUIL) * AFUP_COTISATION_PERSONNE_MORALE;
     }
 }

@@ -87,22 +87,53 @@ class EventRepository extends Repository implements MetadataInitializer
     public function getList($id = null)
     {
         $sql = <<<ENDSQL
-SELECT f.id, f.titre, f.path, f.nb_places, f.date_debut, f.date_fin, f.date_fin_appel_conferencier, f.date_fin_vente, IF(count(s.session_id) + count(i.id)>0, 0, 1) as est_supprimable
+SELECT f.id, f.titre, f.path, f.nb_places, f.date_debut, f.date_fin, f.date_fin_appel_conferencier, f.date_fin_vente, f.archived_at
 FROM afup_forum f
-LEFT JOIN afup_sessions s ON (f.id = s.id_forum)
-LEFT JOIN afup_inscription_forum i ON (f.id = i.id_forum)
 %s
 GROUP BY f.id, f.titre, f.path, f.nb_places, f.date_debut, f.date_fin, f.date_fin_appel_conferencier, f.date_fin_vente
 ORDER BY date_debut desc;
 ENDSQL;
         $sql = sprintf($sql, $id === null ? '':'WHERE f.id = :id');
 
+        $sessions = $this->countRelation('afup_sessions');
+        $inscriptions = $this->countRelation('afup_inscription_forum');
 
         $query = $this->getQuery($sql);
         if ($id !== null) {
             $query->setParams(['id'=>$id]);
         }
-        return $query->query($this->getCollection(new HydratorArray()));
+
+        $results = $query->query($this->getCollection(new HydratorArray()));
+        $data = [];
+
+        foreach ($results as $result) {
+            $result['est_supprimable'] = !array_key_exists($result['id'], $sessions) && !array_key_exists($result['id'], $inscriptions);
+
+            $data[] = $result;
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function countRelation(string $table): array
+    {
+        if (!in_array($table, ['afup_sessions', 'afup_inscription_forum'], true)) {
+            throw new \InvalidArgumentException('Table non gérée');
+        }
+
+        $query = $this->getQuery('SELECT id_forum, COUNT(id_forum) as quantity FROM ' . $table . ' GROUP BY id_forum;');
+        $results = $query->query($this->getCollection(new HydratorArray()));
+
+        $data = [];
+
+        foreach ($results as $result) {
+            $data[$result['id_forum']] = $result['quantity'];
+        }
+
+        return $data;
     }
 
     public function getAllPastEventWithSpeakerEmail($email)
@@ -207,6 +238,13 @@ SQL;
         return $this->getBy(['path' => $path])->first();
     }
 
+    public function getAllActive(): CollectionInterface
+    {
+        $query = $this->getQuery('SELECT * FROM afup_forum WHERE archived_at IS NULL');
+
+        return $query->query($this->getCollection(new HydratorSingleObject()));
+    }
+
     public static function initMetadata(SerializerFactoryInterface $serializerFactory, array $options = [])
     {
         $metadata = new Metadata($serializerFactory);
@@ -296,7 +334,8 @@ SQL;
                 'fieldName' => 'dateEndSalesSponsorToken',
                 'type' => 'datetime',
                 'serializer_options' => [
-                    'unserialize' => ['unSerializeUseFormat' => true, 'format' => 'U']
+                    'unserialize' => ['unSerializeUseFormat' => true, 'format' => 'U'],
+                    'serialize' => ['serializeUseFormat' => true, 'format' => 'U'],
                 ]
             ])
             ->addField([
@@ -328,7 +367,7 @@ SQL;
             ])
             ->addField([
                 'columnName' => 'text',
-                'fieldName' => 'cfp',
+                'fieldName' => 'CFP',
                 'type' => 'json',
                 'serializer_options' => [
                     'unserialize' => ['assoc' => true],
@@ -388,6 +427,11 @@ SQL;
                 'fieldName' => 'transportInformationEnabled',
                 'type' => 'bool',
                 'serializer' => Boolean::class
+            ])
+            ->addField([
+                'columnName' => 'archived_at',
+                'fieldName' => 'archivedAt',
+                'type' => 'datetime',
             ])
         ;
 

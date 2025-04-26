@@ -9,16 +9,11 @@ use Afup\Site\Forum\Inscriptions;
 use Afup\Site\Utils\Logs;
 use Afup\Site\Utils\Pays;
 use AppBundle\Controller\LegacyController;
-use AppBundle\Event\Invoice\InvoiceService;
 use AppBundle\Event\Model\Invoice;
 use AppBundle\Event\Model\Repository\EventRepository;
-use AppBundle\Event\Model\Repository\EventStatsRepository;
-use AppBundle\Event\Model\Repository\InvoiceRepository;
 use AppBundle\Event\Model\Repository\TicketEventTypeRepository;
-use AppBundle\Event\Model\Repository\TicketRepository;
 use AppBundle\Event\Model\Ticket;
 use AppBundle\Event\Ticket\TicketTypeAvailability;
-use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /** @var LegacyController $this */
 if (!defined('PAGE_LOADED_USING_INDEX')) {
@@ -31,13 +26,15 @@ $tris_valides = ['i.date', 'i.nom', 'f.societe', 'i.etat'];
 $sens_valides = [ 'desc','asc' ];
 $smarty->assign('action', $action);
 
-$eventRepository = $this->get(EventRepository::class);
-$ticketEventTypeRepository = $this->get(TicketEventTypeRepository::class);
-$ticketTypeAvailability = $this->get(TicketTypeAvailability::class);
-$invoiceService = $this->get(InvoiceService::class);
-$invoiceRepository = $this->get(InvoiceRepository::class);
-$session = $this->get('session');
-$urlGenerator = $this->get(UrlGeneratorInterface::class);
+$eventRepository = $this->eventRepository;
+$ticketEventTypeRepository = $this->ticketEventTypeRepository;
+$ticketTypeAvailability = $this->ticketTypeAvailability;
+$invoiceService = $this->invoiceService;
+$invoiceRepository = $this->invoiceRepository;
+$session = $this->requestStack->getSession();
+$urlGenerator = $this->urlGenerator;
+$eventStatsRepository = $this->eventStatsRepository;
+$ticketRepository = $this->ticketRepository;
 
 function updateGlobalsForTarif(
     EventRepository $eventRepository,
@@ -102,7 +99,7 @@ if ($action == 'lister') {
     $smarty->assign('forum_tarifs_lib',$AFUP_Tarifs_Forum_Lib);
     $smarty->assign('forum_tarifs_restantes', $restantes);
     $smarty->assign('forum_tarifs',$AFUP_Tarifs_Forum);
-    $stats = $this->get(EventStatsRepository::class)->getStats($_GET['id_forum']);
+    $stats = $eventStatsRepository->getStats($_GET['id_forum']);
     $smarty->assign('statistiques', [
         'premier_jour' => [
             'inscrits' => $stats->firstDay->registered,
@@ -121,7 +118,7 @@ if ($action == 'lister') {
         ],
     ]);
 
-    $smarty->assign('forums', $forum->obtenirListe());
+    $smarty->assign('forums', $forum->obtenirListActive());
     $smarty->assign('inscriptions', $forum_inscriptions->obtenirListe($_GET['id_forum'], $list_champs, $list_ordre, $list_associatif, $list_filtre));
     $smarty->assign('finForum', (new \DateTime($forumData['date_fin']))->format('U'));
     $smarty->assign('now', (new \DateTime())->format('U'));
@@ -166,10 +163,6 @@ if ($action == 'lister') {
     ]);
     afficherMessage("L'inscription a été pré-remplie\nPensez à générer le login",  $urlGenerator->generate('admin_members_add'));
 } else {
-
-    /** @var TicketRepository $ticketRepository */
-    $ticketRepository = $this->get('ting')->get(TicketRepository::class);
-
     $pays = new Pays($bdd);
 
     $formulaire = instancierFormulaire();
@@ -414,7 +407,7 @@ if ($action == 'lister') {
             if (is_numeric($valeurs['date_reglement'])) {
                 $paymentDate = new DateTime('@' . $valeurs['date_reglement']);
             } else {
-                $paymentDate = null !== $valeurs['date_reglement'] ? DateTime::createFromFormat('U', $valeurs['date_reglement']) : null;
+                $paymentDate = null !== $valeurs['date_reglement'] ? new DateTime('@' . $valeurs['date_reglement']) : null;
             }
             $invoiceService->handleInvoicing($valeurs['reference'],
                                                     $valeurs['type_reglement'],
@@ -443,7 +436,7 @@ if ($action == 'lister') {
             } else {
                 Logs::log('Modification de l\'inscription de ' . $formulaire->exportValue('prenom') . ' ' . $formulaire->exportValue('nom') . ' (' . $_GET['id'] . ')');
             }
-            afficherMessage('L\'inscription a été ' . (($action == 'ajouter') ? 'ajoutée' : 'modifiée'), 'index.php?page=forum_inscriptions&action=lister');
+            afficherMessage('L\'inscription a été ' . (($action == 'ajouter') ? 'ajoutée' : 'modifiée'), 'index.php?page=forum_inscriptions&action=lister&id_forum=' . $valeurs['id_forum']);
         } else {
             $smarty->assign('erreur', 'Une erreur est survenue lors de ' . (($action == 'ajouter') ? "l'ajout" : 'la modification') . ' de l\'inscription');
         }

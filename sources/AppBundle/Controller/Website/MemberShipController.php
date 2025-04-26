@@ -40,7 +40,6 @@ use AppBundle\LegacyModelFactory;
 use AppBundle\Payment\PayboxBilling;
 use AppBundle\Payment\PayboxFactory;
 use AppBundle\Payment\PayboxResponseFactory;
-use AppBundle\Security\LegacyAuthenticator;
 use AppBundle\Slack\LegacyClient;
 use AppBundle\TechLetter\Model\Repository\SendingRepository;
 use AppBundle\Twig\ViewRenderer;
@@ -56,10 +55,12 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
-use Symfony\Component\Security\Guard\GuardAuthenticatorHandler;
+use Symfony\Component\Security\Http\Authentication\UserAuthenticatorInterface;
+use Symfony\Component\Security\Http\Authenticator\FormLoginAuthenticator;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -76,8 +77,8 @@ class MemberShipController extends AbstractController
     private UserRepository $userRepository;
     private CompanyMemberRepository $companyMemberRepository;
     private UserService $userService;
-    private GuardAuthenticatorHandler $guardAuthenticatorHandler;
-    private LegacyAuthenticator $legacyAuthenticator;
+    private UserAuthenticatorInterface $userAuthenticator;
+    private FormLoginAuthenticator $formLoginAuthenticator;
     private RepositoryFactory $repositoryFactory;
     private InvitationMail $invitationMail;
     private SubscriptionManagement $subscriptionManagement;
@@ -89,6 +90,7 @@ class MemberShipController extends AbstractController
     private GeneralMeetingQuestionRepository $generalMeetingQuestionRepository;
     private GeneralMeetingVoteRepository $generalMeetingVoteRepository;
     private string $storageDir;
+    private UserPasswordHasherInterface $passwordHasher;
 
     public function __construct(ViewRenderer $view,
                                 EventDispatcherInterface $eventDispatcher,
@@ -99,8 +101,8 @@ class MemberShipController extends AbstractController
                                 UserRepository $userRepository,
                                 CompanyMemberRepository $companyMemberRepository,
                                 UserService $userService,
-                                GuardAuthenticatorHandler $guardAuthenticatorHandler,
-                                LegacyAuthenticator $legacyAuthenticator,
+                                UserAuthenticatorInterface $userAuthenticatorInterface,
+                                FormLoginAuthenticator $formLoginAuthenticator,
                                 RepositoryFactory $repositoryFactory,
                                 InvitationMail $invitationMail,
                                 SubscriptionManagement $subscriptionManagement,
@@ -111,8 +113,9 @@ class MemberShipController extends AbstractController
                                 GeneralMeetingRepository $generalMeetingRepository,
                                 GeneralMeetingQuestionRepository $generalMeetingQuestionRepository,
                                 GeneralMeetingVoteRepository $generalMeetingVoteRepository,
-                                string $storageDir)
-    {
+                                string $storageDir,
+                                UserPasswordHasherInterface $passwordHasher
+    ) {
         $this->view = $view;
         $this->eventDispatcher = $eventDispatcher;
         $this->tokenStorage = $tokenStorage;
@@ -122,8 +125,8 @@ class MemberShipController extends AbstractController
         $this->userRepository = $userRepository;
         $this->companyMemberRepository = $companyMemberRepository;
         $this->userService = $userService;
-        $this->guardAuthenticatorHandler = $guardAuthenticatorHandler;
-        $this->legacyAuthenticator = $legacyAuthenticator;
+        $this->userAuthenticator = $userAuthenticatorInterface;
+        $this->formLoginAuthenticator = $formLoginAuthenticator;
         $this->repositoryFactory = $repositoryFactory;
         $this->invitationMail = $invitationMail;
         $this->subscriptionManagement = $subscriptionManagement;
@@ -135,6 +138,7 @@ class MemberShipController extends AbstractController
         $this->generalMeetingQuestionRepository = $generalMeetingQuestionRepository;
         $this->generalMeetingVoteRepository = $generalMeetingVoteRepository;
         $this->storageDir = $storageDir;
+        $this->passwordHasher = $passwordHasher;
     }
 
     public function becomeMember(): Response
@@ -153,8 +157,8 @@ class MemberShipController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
-            // Nécessaire pour md5 le mdp qui est fait dans le setPlainPassword => a terme, utiliser les cryptages de sf
-            $user->setPlainPassword($user->getPassword());
+            $hash = $this->passwordHasher->hashPassword($user, $user->getPassword());
+            $user->setPassword($hash);
             $this->userRepository->save($user);
 
             Logs::initialiser($GLOBALS['AFUP_DB'], $user->getId());
@@ -163,13 +167,7 @@ class MemberShipController extends AbstractController
             $this->userService->sendWelcomeEmail($user);
             $this->addFlash('notice', 'Merci pour votre inscription. Il ne reste plus qu\'à régler votre cotisation.');
 
-            return $this->guardAuthenticatorHandler
-                ->authenticateUserAndHandleSuccess(
-                    $user,
-                    $request,
-                    $this->legacyAuthenticator,
-                    'legacy_secured_area'
-                );
+            return $this->userAuthenticator->authenticateUser($user, $this->formLoginAuthenticator, $request);
         }
 
         return $this->view->render('admin/association/membership/register.html.twig', [
@@ -262,7 +260,7 @@ class MemberShipController extends AbstractController
         return $this->view->render('site/company_membership/payment.html.twig', [
             'paybox' => $paybox,
             'invoice' => $invoice,
-            'bankAccount' => $bankAccountFactory->createApplyableAt(\DateTimeImmutable::createFromFormat('U', $invoice['date_debut'])),
+            'bankAccount' => $bankAccountFactory->createApplyableAt(new \DateTimeImmutable('@' . $invoice['date_debut'])),
             'afup' => [
                 'raison_sociale' => AFUP_RAISON_SOCIALE,
                 'adresse' => AFUP_ADRESSE,
@@ -326,7 +324,8 @@ class MemberShipController extends AbstractController
              */
             $user = $userForm->getData();
             $user->setCivility('');
-            $user->setPlainPassword($user->getPassword());
+            $hash = $this->passwordHasher->hashPassword($user, $user->getPassword());
+            $user->setPassword($hash);
             $user
                 ->setStatus(User::STATUS_ACTIVE)
                 ->setCompanyId($company->getId())
@@ -425,9 +424,10 @@ class MemberShipController extends AbstractController
         $userForm->handleRequest($request);
         if ($userForm->isSubmitted() && $userForm->isValid()) {
             // Save password if not empty
-            $newPassword = $request->request->get($userForm->getName())['plainPassword']['first'];
+            $newPassword = $userForm->get('plainPassword')->getViewData()['first'];
             if ($newPassword) {
-                $user->setPlainPassword($newPassword);
+                $hash = $this->passwordHasher->hashPassword($user, $newPassword);
+                $user->setPassword($hash);
             }
 
             $repo->save($user);
@@ -502,7 +502,11 @@ class MemberShipController extends AbstractController
             $id_personne = $user->getCompanyId();
             $type_personne = AFUP_PERSONNES_MORALES;
             $prefixe = 'Personne morale';
-            $montant = $this->companyMemberRepository->findById($id_personne);
+
+            if (!$company = $this->companyMemberRepository->findById($id_personne)) {
+                throw $this->createNotFoundException('La personne morale n\'existe pas');
+            }
+            $montant = $company->getMembershipFee();
             if ($isSubjectedToVat) {
                 $montant *= 1 + Utils::MEMBERSHIP_FEE_VAT_RATE;
             }

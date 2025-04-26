@@ -98,6 +98,8 @@ class Event implements NotifyPropertyInterface
 
     private bool $hasPricesDefinedWithVat = true;
 
+    private ?DateTime $archivedAt = null;
+
     /**
      * @return int
      */
@@ -368,7 +370,7 @@ class Event implements NotifyPropertyInterface
      */
     public function setCFP($CFP): self
     {
-        $this->propertyChanged('cfp', json_encode($this->CFP), json_encode($CFP));
+        $this->propertyChanged('CFP', json_encode($this->CFP), json_encode($CFP));
         $this->CFP = $CFP;
         return $this;
     }
@@ -681,6 +683,19 @@ class Event implements NotifyPropertyInterface
 
         $this->propertyChanged('transportInformationEnabled', $this->transportInformationEnabled, $transportInformationEnabled);
         $this->transportInformationEnabled = $transportInformationEnabled;
+
+        return $this;
+    }
+
+    public function getArchivedAt(): ?DateTime
+    {
+        return $this->archivedAt;
+    }
+
+    public function setArchivedAt(?DateTime $archivedAt): self
+    {
+        $this->propertyChanged('archivedAt', $this->archivedAt, $archivedAt);
+        $this->archivedAt = $archivedAt;
 
         return $this;
     }

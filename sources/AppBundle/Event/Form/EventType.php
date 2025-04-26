@@ -109,7 +109,12 @@ class EventType extends AbstractType
                 'label' => 'Date annonce planning',
                 'required' => false,
             ])
-            ->add('cfp', EventCFPTextType::class, [
+            ->add('dateEndSalesSponsorToken', DateTimeType::class, [
+                'widget' => 'single_text',
+                'label' => 'Date fin saisie token sponsor',
+                'required' => false,
+            ])
+            ->add('CFP', EventCFPTextType::class, [
                 'label' => false
             ])
             ->add('speakersDinerEnabled', CheckboxType::class, [

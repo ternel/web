@@ -119,6 +119,11 @@ class Forum
         }
     }
 
+    public function obtenirListActive()
+    {
+        return $this->_bdd->obtenirTous('SELECT * FROM afup_forum WHERE archived_at IS NULL ORDER BY titre');
+    }
+
     public function afficherDeroulementMobile($sessions): string
     {
         $deroulement = "<div class=\"deroulements\">";
@@ -472,7 +477,8 @@ CODE_HTML;
                             }
                             if (false === $bSeance && !$bKeynote):
                                     $sTable .= "<td>&nbsp;</td>";
-                            endif; else:
+                            endif;
+                            else:
                                 $aRowSpan[$idSalle]--;
                             endif;
                         }
