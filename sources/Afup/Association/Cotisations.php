@@ -39,16 +39,12 @@ define('AFUP_COTISATIONS_PAIEMENT_REFUSE', 3);
  */
 class Cotisations
 {
-    private Base_De_Donnees $_bdd;
-
-    private ?Droits $_droits;
-
     private ?CompanyMemberRepository $companyMemberRepository = null;
 
-    public function __construct(Base_De_Donnees $bdd, Droits $droits = null)
-    {
-        $this->_bdd = $bdd;
-        $this->_droits = $droits;
+    public function __construct(
+        private readonly Base_De_Donnees $_bdd,
+        private readonly ?Droits $_droits = null,
+    ) {
     }
 
     /**
@@ -196,27 +192,34 @@ class Cotisations
         return $this->_bdd->obtenirUn($requete);
     }
 
-    public function notifierRegelementEnLigneAuTresorier(string $cmd, string $total, string $autorisation, string $transaction, UserRepository $userRepository): ?bool
+    public function notifierReglementEnLigneAuTresorier(string $cmd, string $total, string $autorisation, string $transaction, UserRepository $userRepository): ?bool
     {
-        $account = $this->getAccountFromCmd($cmd);
-
-        if (AFUP_PERSONNES_MORALES == $account['type']) {
+        if (str_starts_with($cmd, 'F')) {
             $invoiceNumber = substr($cmd, 1);
             $cotisation = $this->getByInvoice($invoiceNumber);
             $company = $this->companyMemberRepository ? $this->companyMemberRepository->get($cotisation['id_personne']) : null;
-            Assertion::notNull($company);
+            if ($company === null) {
+                throw new \RuntimeException(sprintf('Personne morale non trouvée pour "%s"', $cmd));
+            }
             $infos = [
                 'nom' => $company->getLastName(),
                 'prenom' => $company->getFirstName(),
                 'email' => $company->getEmail(),
+                'id' => $cotisation['id_personne'],
+                'type' => AFUP_PERSONNES_MORALES,
             ];
         } else {
-            $user = $userRepository->get($account['id']);
-            Assertion::notNull($user);
+            [$ref, $date, $type_personne, $id_personne, $reste] = explode('-', $cmd, 5);
+            $user = $userRepository->get($id_personne);
+            if ($user === null) {
+                throw new \RuntimeException(sprintf('Personne physique non trouvée pour "%s"', $cmd));
+            }
             $infos = [
                 'nom' => $user->getLastName(),
                 'prenom' => $user->getFirstName(),
                 'email' => $user->getEmail(),
+                'id' => $id_personne,
+                'type' => $type_personne,
             ];
         }
 
@@ -225,7 +228,7 @@ class Cotisations
         $corps = "Bonjour, \n\n";
         $corps .= "Une cotisation annuelle AFUP a été réglée.\n\n";
         $corps .= "Personne : " . $infos['nom'] . " " . $infos['prenom'] . " (" . $infos['email'] . ")\n";
-        $corps .= "URL : " . Site::WEB_PATH . "pages/administration/index.php?page=cotisations&type_personne=" . $account['type'] . "&id_personne=" . $account['id'] . "\n";
+        $corps .= "URL : " . Site::WEB_PATH . "pages/administration/index.php?page=cotisations&type_personne=" . $infos['type'] . "&id_personne=" . $infos['id'] . "\n";
         $corps .= "Commande : " . $cmd . "\n";
         $corps .= "Total : " . $total . "\n";
         $corps .= "Autorisation : " . $autorisation . "\n";
@@ -241,13 +244,13 @@ class Cotisations
 
     public function validerReglementEnLigne($cmd, $total, string $autorisation, string $transaction)
     {
-        $reference = substr($cmd, 0, strlen($cmd) - 4);
-        $verif = substr($cmd, strlen($cmd) - 3, strlen($cmd));
+        $reference = substr((string) $cmd, 0, strlen((string) $cmd) - 4);
+        $verif = substr((string) $cmd, strlen((string) $cmd) - 3, strlen((string) $cmd));
         $result = false;
 
-        if (str_starts_with($cmd, 'F')) {
+        if (str_starts_with((string) $cmd, 'F')) {
             // This is an invoice ==> we dont have to create a new cotisation, just update the existing one
-            $invoiceNumber = substr($cmd, 1);
+            $invoiceNumber = substr((string) $cmd, 1);
             $cotisation = $this->getByInvoice($invoiceNumber);
 
             $this
@@ -256,7 +259,7 @@ class Cotisations
                     AFUP_COTISATIONS_REGLEMENT_ENLIGNE, "autorisation : " . $autorisation . " / transaction : " . $transaction
                 );
         } elseif (substr(md5($reference), -3) === strtolower($verif) && !$this->estDejaReglee($cmd)) {
-            [$ref, $date, $type_personne, $id_personne, $reste] = explode('-', $cmd, 5);
+            [$ref, $date, $type_personne, $id_personne, $reste] = explode('-', (string) $cmd, 5);
             $date_debut = mktime(0, 0, 0, (int) substr($date, 2, 2), (int) substr($date, 0, 2), (int) substr($date, 4, 4));
 
             $cotisation = $this->obtenirDerniere($type_personne, $id_personne);
@@ -285,7 +288,7 @@ class Cotisations
      */
     public function getAccountFromCmd($cmd): array
     {
-        $arr = explode('-', $cmd, 5);
+        $arr = explode('-', (string) $cmd, 5);
         // Personne morale : $cmd=FCOTIS-2023-202
         if (3 === count($arr)) {
             return ['type' => UserRepository::USER_TYPE_COMPANY, 'id' => $arr[2]];

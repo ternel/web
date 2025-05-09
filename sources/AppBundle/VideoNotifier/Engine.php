@@ -14,41 +14,25 @@ use Exception;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
-final class Engine
+final readonly class Engine
 {
     private const VALID_TALK_TYPES = [
         Talk::TYPE_FULL_LONG,
         Talk::TYPE_FULL_SHORT,
     ];
 
-    /** @var iterable<Transport> */
-    private iterable $transports;
-    private PlanningRepository $planningRepository;
-    private TalkRepository $talkRepository;
-    private SpeakerRepository $speakerRepository;
-    private HistoryRepository $historyRepository;
-    private LoggerInterface $logger;
-    private ClockInterface $clock;
-
     /**
      * @param iterable<Transport> $transports
      */
     public function __construct(
-        iterable $transports,
-        PlanningRepository $planningRepository,
-        TalkRepository $talkRepository,
-        SpeakerRepository $speakerRepository,
-        HistoryRepository $historyRepository,
-        LoggerInterface $logger,
-        ClockInterface $clock
+        private iterable $transports,
+        private PlanningRepository $planningRepository,
+        private TalkRepository $talkRepository,
+        private SpeakerRepository $speakerRepository,
+        private HistoryRepository $historyRepository,
+        private LoggerInterface $logger,
+        private ClockInterface $clock,
     ) {
-        $this->transports = $transports;
-        $this->planningRepository = $planningRepository;
-        $this->talkRepository = $talkRepository;
-        $this->speakerRepository = $speakerRepository;
-        $this->historyRepository = $historyRepository;
-        $this->logger = $logger;
-        $this->clock = $clock;
     }
 
     public function run(): ?HistoryEntry
@@ -84,7 +68,7 @@ final class Engine
                 // On ignore les erreurs pour pouvoir tenter avec un autre transport
                 $this->logger->error(sprintf(
                     '[video-notifier] %s error: %s',
-                    $transport->socialNetwork()->getValue(),
+                    $transport->socialNetwork()->value,
                     $e->getMessage(),
                 ));
             }

@@ -214,20 +214,6 @@ services:
         arguments:
             $backOfficePages: '%app.pages_backoffice%'
 
-    AppBundle\Twig\TwigExtension:
-        arguments: ['@AppBundle\Routing\LegacyRouter', "@Parsedown", '@AppBundle\Email\Parsedown', "%google_analytics_enabled%", "%google_analytics_id%"]
-        tags:
-            -  { name: twig.extension }
-
-    AppBundle\Twig\AssetsExtension:
-        arguments: ["%kernel.project_dir%"]
-        tags:
-            -  { name: twig.extension }
-
-    AppBundle\Twig\OfficesExtension:
-        tags:
-            -  { name: twig.extension }
-
     AppBundle\Association\Form\HelpMessageExtension:
         autowire: true
         tags:
@@ -261,9 +247,11 @@ services:
             $legacyBasePath: "%kernel.project_dir%/../htdocs"
 
     AppBundle\SpeakerInfos\SpeakersExpensesStorage:
+        autowire: true
+        autoconfigure: true
+        public: false
         arguments:
-            - "%kernel.project_dir%/../htdocs/uploads/speaker_expenses"
-            - "/uploads/speaker_expenses"
+            $basePath: "%kernel.project_dir%/../htdocs/uploads/speaker_expenses"
 
     Twig_Extensions_Extension_Intl:
         class: Twig_Extensions_Extension_Intl
@@ -479,7 +467,7 @@ services:
 
     AppBundle\Github\GithubClient:
         arguments:
-            $githubClient: '@http_client.github'
+            $httpClient: '@http_client.github'
 
     AppBundle\Indexation\Meetups\MeetupClient:
         autowire: true
