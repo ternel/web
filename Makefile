@@ -33,6 +33,37 @@ help:
 
 .PHONY: install docker-up docker-stop docker-down test hooks vendors db-seed db-migrations reset-db init console phpstan
 
+##@ Minimal (DX oriented usage)
+
+### Start the stack (works every time)
+start:
+	# Let's build and up the containers
+	CURRENT_UID=$(CURRENT_UID) ENABLE_XDEBUG=$(ENABLE_XDEBUG) $(DOCKER_COMPOSE_BIN) build
+	CURRENT_UID=$(CURRENT_UID) $(DOCKER_COMPOSE_BIN) up --detach --wait --no-build
+	# Install vendors and assets
+	make config
+	# DB stuff, create and migrate
+	echo 'CREATE DATABASE IF NOT EXISTS web' | $(DOCKER_COMPOSE_BIN) run -T --rm db /opt/mysql_no_db
+	CURRENT_UID=$(CURRENT_UID) $(DOCKER_COMPOSE_BIN) run --rm -u localUser apachephp make db-migrations
+	@echo
+	@printf "Stack is up & ready! 🚀"
+	@echo
+	@printf "Site Afup accessible sur \033[32mhttps://localhost:9205\033[0m\n"
+	@printf "mailcatcher accessible sur \033[32mhttps://localhost:1181\033[0m\n"
+
+### Launch fixtures
+fixtures:
+    # Easy/conventional name to load fixtures
+	CURRENT_UID=$(CURRENT_UID) $(DOCKER_COMPOSE_BIN) run --rm -u localUser apachephp make db-seed
+	@echo
+	@printf "Fixtures chargés ! 🚀"
+	@echo
+	@printf "Compte utilisateur (avec accès admin) \033[32madmin@admin.fr / admin\033[0m\n"
+
+### Stop the stack
+stop:
+	make docker-stop
+
 ##@ Setup
 
 ### Installer les dépendences (composer, npm)
